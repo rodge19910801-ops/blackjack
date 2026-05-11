@@ -193,12 +193,12 @@
       <button class="auth-tab" onclick="switchTab('register')">註冊</button>
     </div>
     <div id="loginForm">
-      <input class="auth-input" id="loginId" placeholder="玩家 ID" autocomplete="off">
+      <input class="auth-input" id="loginId" placeholder="玩家暱稱" autocomplete="off">
       <input class="auth-input" id="loginPass" type="password" placeholder="密碼">
       <button class="auth-btn" onclick="doLogin()">登入</button>
     </div>
     <div id="registerForm" style="display:none">
-      <input class="auth-input" id="regId" placeholder="玩家 ID（不可更改）" autocomplete="off">
+      <input class="auth-input" id="regId" placeholder="玩家暱稱（不可更改）" autocomplete="off">
       <input class="auth-input" id="regPass" type="password" placeholder="密碼（至少 4 位）">
       <input class="auth-input" id="regPass2" type="password" placeholder="確認密碼">
       <button class="auth-btn" onclick="doRegister()">建立帳號</button>
@@ -404,7 +404,7 @@ window.doLogin = async function() {
   const p  = document.getElementById('loginPass').value;
   setAuthMsg('登入中...','#aaa');
   const user = await dbGet(`users/${id}`);
-  if (!user) { setAuthMsg('找不到此玩家 ID'); return; }
+  if (!user) { setAuthMsg('找不到此玩家暱稱'); return; }
   if (user.password !== btoa(p)) { setAuthMsg('密碼錯誤'); return; }
   currentUser = id;
   sessionStorage.setItem('bjUser', id);
