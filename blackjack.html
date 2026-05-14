@@ -162,6 +162,23 @@
   .result-table td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); }
   .next-round-btn { width: 100%; padding: 14px; background: #27ae60; color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; }
   .end-session-btn { width: 100%; padding: 12px; background: #7f8c8d; color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: bold; cursor: pointer; margin-top: 8px; }
+  .auto-next-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; color: #aaa; font-size: 0.85rem; }
+  .auto-next-count { color: #ffd700; font-weight: bold; font-size: 1.1rem; min-width: 20px; text-align: center; }
+  .buy-chips-btn { width: 100%; padding: 14px; background: linear-gradient(135deg,#f39c12,#e67e22); color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; transition: opacity .2s; }
+  .buy-chips-btn:hover { opacity: 0.85; }
+
+  /* Card animations */
+  @keyframes dealCard {
+    from { opacity: 0; transform: translateY(-80px) rotate(-8deg) scale(0.7); }
+    to   { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+  }
+  @keyframes flipReveal {
+    0%   { transform: rotateY(90deg) scale(0.85); opacity: 0.3; }
+    60%  { transform: rotateY(-8deg) scale(1.05); opacity: 1; }
+    100% { transform: rotateY(0deg) scale(1); opacity: 1; }
+  }
+  .card.deal-anim { animation: dealCard 0.38s cubic-bezier(0.25,0.46,0.45,0.94) both; }
+  .card.flip-anim { animation: flipReveal 0.45s cubic-bezier(0.25,0.46,0.45,0.94) both; }
 
   /* Loading */
   .loading { text-align: center; padding: 40px; color: #aaa; }
@@ -351,6 +368,8 @@ let myBet = 0;
 let betConfirmed = false;
 let roomListener = null;
 let bettingInterval = null;
+let autoNextTimer = null;
+let autoNextCount = 5;
 
 // ── Helpers ──
 function showScreen(id) {
@@ -507,6 +526,9 @@ function attachRoomListener() {
 function detachRoomListener() {
   if (roomListener) { off(dbRef(`rooms/${currentRoomCode}`)); roomListener = null; }
   if (bettingInterval) { clearInterval(bettingInterval); bettingInterval = null; }
+  if (autoNextTimer) { clearInterval(autoNextTimer); autoNextTimer = null; }
+  renderResults._lastRound = -1;
+  renderDealerZone._lastDone = false;
 }
 
 // ══════════════════════════════════════════════════
@@ -635,9 +657,20 @@ function getActivePlayer(room) {
 function renderDealerZone(room) {
   const dCards = room.dealerCards || [];
   const showAll = room.dealerDone;
-  document.getElementById('dealerCards').innerHTML = dCards.map((c,i) =>
-    cardHTML(c, i===1 && !showAll && dCards.length===2)
-  ).join('');
+  // 第1張：delay 0.1s，第2張：delay 0.55s（更有間隔感）
+  // 莊家翻牌時第2張用 flip-anim
+  const prevDone = renderDealerZone._lastDone;
+  const justFlipped = showAll && !prevDone && dCards.length >= 2;
+  renderDealerZone._lastDone = showAll;
+
+  document.getElementById('dealerCards').innerHTML = dCards.map((c,i) => {
+    const delay = i === 0 ? 0.1 : 0.55;
+    if (i === 1 && !showAll && dCards.length === 2) return cardHTML(c, true, delay, 'deal-anim');
+    if (i === 1 && justFlipped) return cardHTML(c, false, 0, 'flip-anim');
+    // 補牌不重播動畫
+    return cardHTML(c, false, i < 2 ? delay : 0, i < 2 ? 'deal-anim' : '');
+  }).join('');
+
   let scoreText = '';
   if (dCards.length > 0) {
     if (!showAll && dCards.length === 2) {
@@ -649,6 +682,7 @@ function renderDealerZone(room) {
   }
   document.getElementById('dealerScore').textContent = scoreText;
 }
+renderDealerZone._lastDone = false;
 
 function renderPlayersArea(room) {
   const area = document.getElementById('playersArea');
@@ -672,7 +706,7 @@ function renderPlayersArea(room) {
       </div>
       <div class="player-bet-tag">下注：<span class="bet-amount">${ps.bet>0?ps.bet:'—'}</span>${ps.pnl?`<span style="color:${ps.pnl>0?'#2ecc71':'#e74c3c'};margin-left:8px">${ps.pnl>0?'+':''}${ps.pnl}</span>`:''}
       </div>
-      <div class="cards-row">${(ps.cards||[]).map(c=>cardHTML(c)).join('')}</div>
+      <div class="cards-row">${(ps.cards||[]).map((c,i)=>cardHTML(c,false,i<2?(i===0?0.25:0.7):0,i<2?'deal-anim':'')).join('')}</div>
     </div>`;
   }).join('');
 }
@@ -944,10 +978,17 @@ async function runDealerAndResolve(room) {
 //  RESULTS
 // ══════════════════════════════════════════════════
 function renderResults(room) {
+  // 避免重複渲染重啟 timer
+  if (renderResults._lastRound === room.round) return;
+  renderResults._lastRound = room.round;
+
+  // 清除舊 timer
+  if (autoNextTimer) { clearInterval(autoNextTimer); autoNextTimer = null; }
+
   const mainArea = document.getElementById('mainArea');
   const ds = room.dealerScore;
   const dBJ = room.dealerBJ;
-  const dCards = (room.dealerCards||[]).map(c=>cardHTML(c)).join('');
+  const dCards = (room.dealerCards||[]).map((c,i)=>cardHTML(c,false,i*0.15,'deal-anim')).join('');
 
   const rows = (room.roundResults||[]).map(r => {
     const cls = r.pnl>0?'profit-pos':r.pnl<0?'profit-neg':'';
@@ -961,7 +1002,12 @@ function renderResults(room) {
     </tr>`;
   }).join('');
 
+  // 我這局是否有輸
+  const myResult = (room.roundResults||[]).find(r => r.player === currentUser);
+  const iLost = myResult && myResult.pnl < 0;
+
   const isDealer = room.dealer === currentUser;
+
   mainArea.innerHTML = `
     <div class="round-result">
       <h3>本局結果 — 莊家：${ds}點${dBJ?' (BlackJack!)':ds>21?' (爆牌)':''}</h3>
@@ -970,15 +1016,42 @@ function renderResults(room) {
         <thead><tr><th>玩家</th><th>點數</th><th>下注</th><th>盈虧</th><th>結果</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ${iLost ? `
+        <a class="buy-chips-btn" href="https://t.me/rodge7578" target="_blank">
+          💰 籌碼不夠了？點我加購
+        </a>` : ''}
       ${isDealer ? `
-        <button class="next-round-btn" onclick="nextRound()">▶ 下一局</button>
+        <button class="next-round-btn" id="nextRoundBtn" onclick="nextRoundNow()">▶ 下一局</button>
+        <div class="auto-next-bar">自動開始倒數：<span class="auto-next-count" id="autoNextCount">5</span> 秒</div>
         <button class="end-session-btn" onclick="endSession()">結束牌局</button>
       ` : '<div style="color:#aaa;text-align:center;margin-top:16px;font-size:0.9rem">等待莊家開始下一局...</div>'}
     </div>`;
+
+  // 莊家自動 5 秒後開下一局
+  if (isDealer) {
+    autoNextCount = 5;
+    autoNextTimer = setInterval(() => {
+      autoNextCount--;
+      const el = document.getElementById('autoNextCount');
+      if (el) el.textContent = autoNextCount;
+      if (autoNextCount <= 0) {
+        clearInterval(autoNextTimer); autoNextTimer = null;
+        nextRoundNow();
+      }
+    }, 1000);
+  }
 }
+renderResults._lastRound = -1;
+
+window.nextRoundNow = function() {
+  if (autoNextTimer) { clearInterval(autoNextTimer); autoNextTimer = null; }
+  nextRound();
+};
 
 window.nextRound = async function() {
   myBet = 0; betConfirmed = false;
+  renderResults._lastRound = -1;
+  renderDealerZone._lastDone = false;
   const room = await dbGet(`rooms/${currentRoomCode}`);
   if (!room || room.dealer !== currentUser) return;
 
@@ -1056,10 +1129,11 @@ function handScore(cards) {
   return total;
 }
 function isBlackjack(cards) { return cards.length===2&&handScore(cards)===21; }
-function cardHTML(card, faceDown=false) {
-  if (faceDown) return `<div class="card back"></div>`;
+function cardHTML(card, faceDown=false, animDelay=0, animClass='deal-anim') {
+  const delayStyle = animDelay > 0 ? `style="animation-delay:${animDelay}s"` : '';
+  if (faceDown) return `<div class="card back ${animClass}" ${delayStyle}></div>`;
   const red = card.suit==='♥'||card.suit==='♦';
-  return `<div class="card${red?' red':''}"><span class="rank">${card.rank}</span><span class="suit">${card.suit}</span></div>`;
+  return `<div class="card${red?' red':''} ${animClass}" ${delayStyle}><span class="rank">${card.rank}</span><span class="suit">${card.suit}</span></div>`;
 }
 
 // ══════════════════════════════════════════════════
