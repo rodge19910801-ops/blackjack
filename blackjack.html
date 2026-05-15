@@ -126,14 +126,21 @@ body{font-family:'Segoe UI',sans-serif;background:#0d3320;color:#fff;min-height:
 .pz-status.ready{background:#27ae60}
 
 /* Result overlay */
-.result-overlay{position:absolute;inset:0;border-radius:12px;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:10}
-.result-tag{font-size:1.3rem;font-weight:900;padding:6px 14px;border-radius:10px;letter-spacing:1px;text-shadow:0 2px 4px rgba(0,0,0,0.5);animation:resultPop .5s cubic-bezier(.175,.885,.32,1.275) forwards}
-.result-tag.win{background:linear-gradient(135deg,#27ae60,#1e8449);color:#fff;box-shadow:0 0 20px rgba(39,174,96,0.6)}
+.result-overlay{position:absolute;inset:0;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:10;background:rgba(0,0,0,0.45)}
+.result-tag{font-size:1.5rem;font-weight:900;padding:8px 16px;border-radius:12px;letter-spacing:2px;text-shadow:0 2px 6px rgba(0,0,0,0.6);animation:resultPop .45s cubic-bezier(.175,.885,.32,1.275) forwards;text-align:center}
+.result-tag.win{background:linear-gradient(135deg,#27ae60,#1e8449);color:#fff;box-shadow:0 0 24px rgba(39,174,96,0.7)}
 .result-tag.lose{background:linear-gradient(135deg,#c0392b,#922b21);color:#fff;box-shadow:0 0 20px rgba(192,57,43,0.5)}
 .result-tag.push{background:linear-gradient(135deg,#7f8c8d,#5d6d7e);color:#fff}
-.result-tag.bj{background:linear-gradient(135deg,#f6c90e,#e5a800);color:#000;box-shadow:0 0 24px rgba(246,201,14,0.7)}
-@keyframes resultPop{from{opacity:0;transform:scale(.5) rotate(-5deg)}to{opacity:1;transform:scale(1) rotate(0)}}
-.pnl-tag{font-size:0.8rem;font-weight:700;margin-top:4px}
+.result-tag.bj{background:linear-gradient(135deg,#f6c90e,#e5a800);color:#000;box-shadow:0 0 28px rgba(246,201,14,0.8);font-size:1.1rem;padding:6px 12px}
+@keyframes resultPop{from{opacity:0;transform:scale(.4) rotate(-8deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+.pnl-tag{font-size:1rem;font-weight:900;margin-top:6px;text-shadow:0 1px 4px rgba(0,0,0,0.8);animation:resultPop .5s .15s cubic-bezier(.175,.885,.32,1.275) both}
+/* result zone borders */
+.win-zone{border-color:#27ae60!important;box-shadow:0 0 22px rgba(39,174,96,0.45)!important}
+.lose-zone{border-color:#c0392b!important;opacity:.9}
+.bj-zone{border-color:#ffd700!important;box-shadow:0 0 30px rgba(255,215,0,0.55)!important}
+.push-zone{border-color:#7f8c8d!important}
+/* result summary */
+.result-summary-box{background:rgba(0,0,0,0.55);border:1px solid rgba(255,215,0,0.12);border-radius:14px;padding:14px 16px;margin-top:12px}
 
 /* Divider */
 .table-divider{border:none;border-top:1px solid rgba(255,255,255,0.05);margin:12px 0}
@@ -181,12 +188,9 @@ body{font-family:'Segoe UI',sans-serif;background:#0d3320;color:#fff;min-height:
 .score-row:last-child{border-bottom:none}
 
 /* Results */
-.result-screen{background:rgba(0,0,0,0.55);border-radius:14px;padding:20px;width:100%;margin-bottom:12px}
-.result-screen h3{color:#ffd700;margin-bottom:14px;text-align:center;font-size:1rem}
-.result-dealer-cards{display:flex;gap:6px;justify-content:center;margin-bottom:14px}
-.rtable{width:100%;border-collapse:collapse;font-size:0.85rem}
-.rtable th{color:#666;font-weight:400;padding:5px 6px;text-align:left;border-bottom:1px solid #222}
-.rtable td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,0.04)}
+.rtable{width:100%;border-collapse:collapse;font-size:0.85rem;margin-bottom:10px}
+.rtable th{color:#888;font-weight:500;padding:6px 6px;text-align:left;border-bottom:1px solid #2a2a2a;font-size:0.75rem;text-transform:uppercase;letter-spacing:.5px}
+.rtable td{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.04)}
 .next-btn{width:100%;padding:13px;background:linear-gradient(135deg,#27ae60,#1e8449);color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:10px}
 .end-btn{width:100%;padding:11px;background:transparent;border:1px solid #444;color:#888;border-radius:8px;font-size:0.85rem;cursor:pointer;margin-top:6px}
 .auto-bar{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;color:#666;font-size:0.82rem}
@@ -631,6 +635,9 @@ async function renderGame(room) {
 
   if (room.state === 'results') { renderResults(room); return; }
 
+  // Non-results state: kill any leftover auto-countdown
+  if (autoNextTimer) { clearInterval(autoNextTimer); autoNextTimer = null; }
+
   // Ensure game area structure
   ensureGameArea();
 
@@ -947,6 +954,7 @@ window.doDouble = async () => {
 //  DEALER AUTO-PLAY & RESOLVE
 // ══════════════════════════════════════════════════
 async function runDealerAndResolve(room) {
+  if (room.state !== 'playing') return;  // 防止重複觸發
   let deck = JSON.parse(room.deck||'[]');
   let dealerCards = [...(room.dealerCards||[])];
   while (handScore(dealerCards) < 17) dealerCards.push(deck.pop());
@@ -1013,43 +1021,114 @@ function renderResults(room) {
   showScreen('gameScreen');
   document.getElementById('gameInfo').textContent = `${room.name} ／ 莊家：${room.dealer}`;
 
-  const mainEl = document.querySelector('.game-body > div:first-child');
   const ds = room.dealerScore;
   const dBJ = room.dealerBJ;
-  const dCards = (room.dealerCards||[]).map((c,i)=>cardHTML(c,false,i*0.18,'deal-anim')).join('');
-  const myRes = (room.roundResults||[]).find(r=>r.player===currentUser);
-  const iLost = myRes && myRes.pnl < 0;
+  const results = room.roundResults || [];
   const isDealer = room.dealer === currentUser;
 
-  const rows = (room.roundResults||[]).map(r => {
-    const cls = r.pnl>0?'profit-pos':r.pnl<0?'profit-neg':'';
-    const rt = {win:'✓ 勝',lose:'✗ 敗',push:'平局',blackjack:'🃏 BJ!'}[r.result]||'';
-    return `<tr>
-      <td>${r.player}${r.player===currentUser?' ★':''}</td>
-      <td>${r.score}點</td>
-      <td>${r.bet}</td>
-      <td class="${cls}">${r.pnl>0?'+':''}${r.pnl}</td>
-      <td>${rt}</td>
-    </tr>`;
-  }).join('');
+  // ── Phase banner ──
+  const banner = document.getElementById('phaseBanner');
+  if (banner) {
+    banner.style.display = '';
+    banner.textContent = `本局結果 — 莊家 ${ds}點${dBJ?' 🃏 BlackJack!':ds>21?' 💥 爆牌':''}`;
+  }
 
-  mainEl.innerHTML = `
-    <div class="result-screen">
-      <h3>本局結果 — 莊家 ${ds}點${dBJ?' (BlackJack!)':ds>21?' (爆牌)':''}</h3>
-      <div class="result-dealer-cards">${dCards}</div>
-      <table class="rtable">
-        <thead><tr><th>玩家</th><th>點數</th><th>下注</th><th>盈虧</th><th>結果</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      ${iLost ? `<a class="buy-btn" href="https://t.me/rodge7578" target="_blank">💰 籌碼不足？點我加購</a>` : ''}
-      ${isDealer ? `
-        <button class="next-btn" onclick="nextRoundNow()">▶ 下一局</button>
-        <div class="auto-bar">自動開始倒數：<span class="auto-count" id="autoCount">5</span> 秒</div>
-        <button class="end-btn" onclick="endSession()">結束牌局</button>
-      ` : '<div style="color:#555;text-align:center;margin-top:14px;font-size:0.83rem">等待莊家開始下一局...</div>'}
-    </div>`;
+  // ── Dealer zone: reveal all cards ──
+  const dCards = room.dealerCards || [];
+  const dealerEl = document.getElementById('dealerCards');
+  if (dealerEl) {
+    dealerEl.innerHTML = dCards.map((c, i) =>
+      cardHTML(c, false, 0, i === 1 ? 'flip-anim' : '')
+    ).join('');
+  }
+  const scoreEl = document.getElementById('dealerScore');
+  if (scoreEl) scoreEl.textContent = `${ds}點${dBJ?' BJ!':ds>21?' 💥':''}`;
 
-  // 同步更新 balance 顯示
+  // ── Player zones with WIN/LOSE overlays ──
+  const row = document.getElementById('playersRow');
+  if (row) {
+    row.innerHTML = (room.activePlayers||[]).map(p => {
+      const ps = room.playerStates?.[p];
+      const r  = results.find(x => x.player === p);
+      if (!ps) return '';
+      const isMe  = p === currentUser;
+      const cards = (ps.cards||[]).map(c => cardHTML(c, false, 0, '')).join('');
+      const score = handScore(ps.cards||[]);
+
+      let zoneExtra = '', overlayHTML = '';
+      if (r) {
+        const pnlColor = r.pnl > 0 ? '#2ecc71' : r.pnl < 0 ? '#e74c3c' : '#aaa';
+        const pnlTxt   = (r.pnl > 0 ? '+' : '') + r.pnl;
+        if (r.result === 'win') {
+          zoneExtra = 'win-zone';
+          overlayHTML = `<div class="result-overlay">
+            <span class="result-tag win">WIN</span>
+            <div class="pnl-tag" style="color:${pnlColor}">${pnlTxt}</div>
+          </div>`;
+        } else if (r.result === 'blackjack') {
+          zoneExtra = 'bj-zone';
+          overlayHTML = `<div class="result-overlay">
+            <span class="result-tag bj">🃏 BLACKJACK</span>
+            <div class="pnl-tag" style="color:#ffd700">${pnlTxt}</div>
+          </div>`;
+        } else if (r.result === 'lose') {
+          zoneExtra = 'lose-zone';
+          overlayHTML = `<div class="result-overlay">
+            <span class="result-tag lose">LOSE</span>
+            <div class="pnl-tag" style="color:${pnlColor}">${pnlTxt}</div>
+          </div>`;
+        } else if (r.result === 'push') {
+          zoneExtra = 'push-zone';
+          overlayHTML = `<div class="result-overlay">
+            <span class="result-tag push">PUSH</span>
+            <div class="pnl-tag" style="color:${pnlColor}">±0</div>
+          </div>`;
+        }
+      }
+
+      return `<div class="player-zone ${zoneExtra}">
+        <div class="pz-name${isMe?' me':''}">${p}${isMe?' ★':''}</div>
+        <div class="pz-score">${score}點</div>
+        <div class="pz-cards">${cards}</div>
+        <div class="pz-bet">下注：<span>${ps.bet}</span></div>
+        ${overlayHTML}
+      </div>`;
+    }).join('');
+  }
+
+  // ── Action area: summary table + dealer controls ──
+  const myRes = results.find(r => r.player === currentUser);
+  const iLost = myRes && myRes.pnl < 0;
+  const area  = document.getElementById('myActionArea');
+  if (area) {
+    const rows = results.map(r => {
+      const cls = r.pnl>0?'profit-pos':r.pnl<0?'profit-neg':'';
+      const rt  = {win:'✓ 勝',lose:'✗ 敗',push:'平局',blackjack:'🃏 BJ!'}[r.result]||'';
+      return `<tr>
+        <td>${r.player}${r.player===currentUser?' ★':''}</td>
+        <td>${r.score}點</td>
+        <td>${r.bet}</td>
+        <td class="${cls}">${r.pnl>0?'+':''}${r.pnl}</td>
+        <td>${rt}</td>
+      </tr>`;
+    }).join('');
+
+    area.innerHTML = `
+      <div class="result-summary-box">
+        <table class="rtable">
+          <thead><tr><th>玩家</th><th>點數</th><th>下注</th><th>盈虧</th><th>結果</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${iLost ? `<a class="buy-btn" href="https://t.me/rodge7578" target="_blank">💰 籌碼不足？點我加購</a>` : ''}
+        ${isDealer ? `
+          <button class="next-btn" onclick="nextRoundNow()">▶ 下一局</button>
+          <div class="auto-bar">自動開始倒數：<span class="auto-count" id="autoCount">5</span> 秒</div>
+          <button class="end-btn" onclick="endSession()">結束牌局</button>
+        ` : `<div style="color:#555;text-align:center;margin-top:12px;font-size:0.83rem">等待莊家開始下一局...</div>`}
+      </div>`;
+  }
+
+  // 同步更新籌碼顯示
   dbGet(`users/${currentUser}`).then(u => {
     if (u) document.getElementById('myBalance').textContent = u.balance ?? 0;
   });
@@ -1072,38 +1151,19 @@ window.nextRoundNow = () => {
 };
 
 window.nextRound = async () => {
-  _lastResultRound = -1; _lastDealerDone = false;
+  if (autoNextTimer) { clearInterval(autoNextTimer); autoNextTimer = null; }
   const room = await dbGet(`rooms/${currentRoomCode}`);
   if (!room || room.dealer !== currentUser) return;
+  if (room.state !== 'results') return;   // ← 防止誤觸發
 
   // 把 pendingPlayers 合進 players
-  const allPlayers = {
-    ...room.players,
-    ...(room.pendingPlayers||{})
-  };
-  await dbUpdate(`rooms/${currentRoomCode}/players`, room.pendingPlayers||{});
-
-  const playerKeys = Object.keys(allPlayers).filter(p=>p!==room.dealer);
+  const pending = room.pendingPlayers || {};
+  const allPlayers = { ...room.players, ...pending };
+  if (Object.keys(pending).length > 0) {
+    await dbUpdate(`rooms/${currentRoomCode}/players`, pending);
+  }
   const updatedRoom = { ...room, players: allPlayers };
-
   await initNewRound(updatedRoom, Object.keys(allPlayers), (room.round||0)+1);
-
-  // Restore felt area
-  const mainEl = document.querySelector('.game-body > div:first-child');
-  if (mainEl) mainEl.innerHTML = `
-    <div class="phase-wrap"><div class="phase-banner" id="phaseBanner" style="display:none"></div></div>
-    <div class="felt">
-      <div class="dealer-zone">
-        <div class="dealer-label-row">
-          <span class="dealer-label">莊 家</span>
-          <span class="dealer-score-badge" id="dealerScore"></span>
-        </div>
-        <div class="dealer-cards-row" id="dealerCards"></div>
-      </div>
-      <hr class="table-divider">
-      <div class="players-row" id="playersRow"></div>
-    </div>
-    <div class="my-action" id="myActionArea"></div>`;
 };
 
 window.endSession = async () => {
