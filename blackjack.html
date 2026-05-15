@@ -75,7 +75,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d3320;color:#fff;min-height:
 .leave-room-btn{width:100%;padding:10px;background:transparent;border:1px solid #444;color:#888;border-radius:8px;font-size:0.85rem;cursor:pointer;margin-top:8px}
 
 /* ══ GAME TABLE ══ */
-.game-header{width:100%;max-width:1060px;display:flex;justify-content:space-between;align-items:center;padding:14px 0 10px;margin:0 auto}
+.game-header{width:100%;max-width:1380px;display:flex;justify-content:space-between;align-items:center;padding:14px 0 10px;margin:0 auto}
 .game-title{font-size:1.1rem;color:#ffd700;font-weight:700}
 .game-meta{font-size:0.8rem;color:#666}
 .header-balance{background:rgba(255,215,0,0.12);border:1px solid rgba(255,215,0,0.25);border-radius:20px;padding:5px 14px;font-size:0.85rem;color:#ffd700;font-weight:700}
@@ -179,8 +179,18 @@ body{font-family:'Segoe UI',sans-serif;background:#0d3320;color:#fff;min-height:
 .spectator-msg{text-align:center;color:#666;font-size:0.85rem;padding:12px;font-style:italic}
 
 /* Side panel */
-.game-body{width:100%;max-width:1060px;margin:0 auto;display:grid;grid-template-columns:1fr 260px;gap:14px}
+.game-body{width:100%;max-width:1380px;margin:0 auto;display:grid;grid-template-columns:210px 1fr 260px;gap:14px;align-items:start}
 .panel{display:flex;flex-direction:column;gap:10px}
+/* History panel */
+.history-panel{display:flex;flex-direction:column;gap:10px;position:sticky;top:14px}
+.hist-entry{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:8px 10px;margin-bottom:5px;transition:border-color .2s}
+.hist-entry:first-child{border-color:rgba(255,215,0,0.18)}
+.hist-round{font-size:0.7rem;color:#555;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center}
+.hist-round-num{color:#ffd700;font-weight:700;font-size:0.75rem}
+.hist-dealer-lbl{color:#666;font-size:0.68rem}
+.hist-row{display:flex;justify-content:space-between;font-size:0.78rem;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.03)}
+.hist-row:last-child{border-bottom:none}
+.hist-empty{color:#444;text-align:center;padding:24px 0;font-size:0.78rem}
 .panel-card{background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px}
 .panel-card h3{color:#ffd700;font-size:0.83rem;margin-bottom:8px;letter-spacing:.5px}
 .score-list{list-style:none}
@@ -209,6 +219,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d3320;color:#fff;min-height:
 @keyframes fadeUp{from{opacity:0;transform:translate(-50%,18px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes fadeOut{to{opacity:0}}
 
+@media(max-width:1000px){.game-body{grid-template-columns:1fr 250px}.history-panel{display:none}}
 @media(max-width:768px){.game-body{grid-template-columns:1fr}.lobby-grid{grid-template-columns:1fr}.players-row{gap:7px}.player-zone{min-width:120px;padding:10px}}
 @media(max-width:480px){.auth-box{width:100%}.modal-box{width:95%}.player-zone{min-width:100px}.card{width:42px;height:60px}}
 </style>
@@ -299,6 +310,15 @@ body{font-family:'Segoe UI',sans-serif;background:#0d3320;color:#fff;min-height:
   </div>
 
   <div class="game-body">
+    <!-- ▌Left: Round history ▐ -->
+    <div class="history-panel">
+      <div class="panel-card">
+        <h3>📜 近期戰況</h3>
+        <div id="roundHistory"><div class="hist-empty">尚無紀錄</div></div>
+      </div>
+    </div>
+
+    <!-- ▌Center: Game table ▐ -->
     <div>
       <!-- Phase banner -->
       <div class="phase-wrap"><div class="phase-banner" id="phaseBanner" style="display:none"></div></div>
@@ -658,6 +678,7 @@ async function renderGame(room) {
   renderPlayersRow(room);
   renderMyAction(room, bal);
   renderSessionBoard(room);
+  renderHistoryPanel(room);
 }
 
 function ensureGameArea() {
@@ -799,6 +820,36 @@ function renderMyAction(room, balance) {
   } else {
     area.innerHTML = '';
   }
+}
+
+function renderHistoryPanel(room) {
+  const el = document.getElementById('roundHistory');
+  if (!el) return;
+  const history = room.roundHistory || {};
+  const rounds = Object.keys(history).map(Number).sort((a,b)=>b-a).slice(0,10);
+  if (rounds.length === 0) {
+    el.innerHTML = '<div class="hist-empty">尚無紀錄</div>';
+    return;
+  }
+  el.innerHTML = rounds.map(r => {
+    const h = history[r];
+    const dTxt = h.dealerBJ ? '🃏BJ' : h.dealerBust ? '💥爆牌' : `${h.dealerScore}點`;
+    const lines = (h.results||[]).map(res => {
+      const cls = res.pnl>0?'profit-pos':res.pnl<0?'profit-neg':'';
+      const icon = res.result==='win'||res.result==='blackjack' ? '✓' : res.result==='lose' ? '✗' : '─';
+      return `<div class="hist-row">
+        <span style="color:#bbb">${res.player}</span>
+        <span class="${cls}">${icon} ${res.pnl>0?'+':''}${res.pnl}</span>
+      </div>`;
+    }).join('');
+    return `<div class="hist-entry">
+      <div class="hist-round">
+        <span class="hist-round-num">Round ${r}</span>
+        <span class="hist-dealer-lbl">莊 ${dTxt}</span>
+      </div>
+      ${lines}
+    </div>`;
+  }).join('');
 }
 
 function renderSessionBoard(room) {
@@ -983,17 +1034,20 @@ async function runDealerAndResolve(room) {
     roundResults.push({ player:p, result, pnl, bet:ps.bet, score:pScore });
   }
 
-  // 更新籌碼：退回 + 盈利
+  // 計算莊家本局淨盈虧（玩家輸的錢 = 莊家贏）
+  let dealerNetPnl = 0;
+  for (const r of roundResults) dealerNetPnl -= r.pnl;
+
+  // 更新玩家籌碼：退回 + 盈利
   for (const r of roundResults) {
     const u = await dbGet(`users/${r.player}`);
     if (!u) continue;
     // bet 已在下注時扣除；現在：push退回本金，win退回本金+贏，bj退回本金+1.5倍
     let refund = 0;
-    if (r.result === 'push')       refund = r.bet;           // 退回本金
-    else if (r.result === 'win')   refund = r.bet * 2;       // 本金+贏
-    else if (r.result === 'blackjack') refund = r.bet + Math.floor(r.bet*1.5); // 本金+1.5倍
+    if (r.result === 'push')           refund = r.bet;
+    else if (r.result === 'win')       refund = r.bet * 2;
+    else if (r.result === 'blackjack') refund = r.bet + Math.floor(r.bet*1.5);
     // lose: refund=0（已扣）
-
     await dbUpdate(`users/${r.player}`, {
       balance: (u.balance??0) + refund,
       games: (u.games||0)+1,
@@ -1004,9 +1058,27 @@ async function runDealerAndResolve(room) {
     });
   }
 
+  // 更新莊家籌碼
+  const dealerU = await dbGet(`users/${room.dealer}`);
+  if (dealerU) {
+    await dbUpdate(`users/${room.dealer}`, {
+      balance: (dealerU.balance??0) + dealerNetPnl,
+      profit:  (dealerU.profit||0) + dealerNetPnl,
+      games:   (dealerU.games||0) + 1
+    });
+  }
+
+  // 記錄本局歷史（保留最近 10 局）
+  const histEntry = {
+    dealerScore, dealerBJ,
+    dealerBust: dealerScore > 21,
+    results: roundResults.map(r => ({ player: r.player, result: r.result, pnl: r.pnl }))
+  };
+
   await dbUpdate(`rooms/${currentRoomCode}`, {
     state:'results', deck:JSON.stringify(deck), dealerCards,
-    dealerDone:true, dealerScore, dealerBJ, playerStates, roundResults
+    dealerDone:true, dealerScore, dealerBJ, playerStates, roundResults,
+    [`roundHistory/${room.round}`]: histEntry
   });
 }
 
@@ -1133,6 +1205,7 @@ function renderResults(room) {
     if (u) document.getElementById('myBalance').textContent = u.balance ?? 0;
   });
   renderSessionBoard(room);
+  renderHistoryPanel(room);
 
   if (isDealer) {
     let cnt = 5;
